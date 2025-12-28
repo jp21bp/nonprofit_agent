@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 ### Manually created modules
 from utilities_module.utilities import *
 from prompts import *
+from grants_module.grants_agent import grants_agent
 ### Typing libraries
 from typing import Optional, Literal, List
 from typing_extensions import TypedDict, Annotated
@@ -249,6 +250,78 @@ llm_router = base_llm.with_structured_output(Router, include_raw=True)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### Creating sub-agents
+#### Grants sub-agent
+grants_agent = grants_agent
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ##### Creating node functionalities
 #### Creating Agent State
 class AgentState(TypedDict):
@@ -257,7 +330,7 @@ class AgentState(TypedDict):
 #### Creating router node
 def main_router_node(state: AgentState) -> Command[
     # Literal["grants", "events", "emails", "__end__"]
-    Literal["__end__"]
+    Literal["grants_subagent","__end__"]
 ]:
     ## Setting up objects router LLM
     metrics = Metrics()
@@ -305,23 +378,26 @@ def main_router_node(state: AgentState) -> Command[
     update = update | metrics_update
 
     ## Setting up next node to traverse
-    # result = result['parsed']
-    # if result.classification == 'grants':
-    #     print('Classification: Grants')
-    #     goto = 'grants'
+    result = result['parsed']
+    if result.classification == 'grants_subagent':
+        print('Classification: Grants')
+        goto = 'grants'
     # elif result.classification == 'events':
     #     print('Classificaiton: Events')
     #     goto = 'events'
     # elif result.classication == 'emails':
     #     print('Classification: Emails')
     #     goto = 'emails'
-    # else:
-    #     raise ValueError(f"Invalid classificaiton: {result.classification}")
+    else:
+        raise ValueError(f"Invalid classificaiton: {result.classification}")
     
     ## Updating agent state
     return Command(goto=goto, update=update)
 
-
+#### Creating grants subagent node
+def grants_agent_node(state: AgentState):
+    # TODO: fully integrate with grants agent
+    return
 
 
 
@@ -351,6 +427,7 @@ def main_router_node(state: AgentState) -> Command[
 ##### Creating Agent
 main_agent = StateGraph(AgentState)
 main_agent = main_agent.add_node("main_router", main_router_node)
+main_agent = main_agent.add_node("grants_subagent", grants_agent_node)
 main_agent = main_agent.add_edge(START, "main_router")
 main_agent = main_agent.compile(
     checkpointer=checkpointer,

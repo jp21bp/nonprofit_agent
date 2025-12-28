@@ -20,9 +20,9 @@ from langchain_core.prompts.chat import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mistralai.chat_models import ChatMistralAI
 ### Other python files 
-from rag import RAG
-from mini_agents import MiniAgent, SystemPrompts
-from utilities import *
+from .rag import RAG
+from .mini_agents import MiniAgent, SystemPrompts
+from .utilities import *
 
 #### Setting up environment
 load_dotenv()
@@ -708,6 +708,129 @@ to the organizational's website RAG agent.\
             'id_counter': id_counter,
             'metrics': self.metrics.history,
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### Invoking the entire agent
+#### Initialize agent
+sys_prompts_mini = SystemPrompts().create_prompts()
+grants_agent = GrantsAgent(llm, rag, sys_prompts_mini)
+
+
+
+#### Visualize agent
+# print(grants_agent.graph.get_graph().draw_ascii())
+
+
+
+#### Creating AgentState starting point
+# user_query = [HumanMessage(content="what are current educational projects?")]
+# start_state = {
+#     'messages': user_query,
+#     'theme': 'educational projects',
+#     'doner_requirements': 'final proposal needs to be one page long',
+#     'num_revisions': 0,
+#     'max_revisions': 2,
+#     'id_counter': 1,
+# }
+
+#### Creating configuration thread for StateSnapshot
+# config = {
+#     'configurable':{
+#         'thread_id': str(1),
+#     }
+# }
+
+# ### Invoke Agent
+# results = agent.graph.invoke(start_state, config)
+
+
+# ### Displaying final AgentState values
+# for k,v in results.items():
+#     print(k)
+#     print(v)
+#     print('\n'*2)
+
+
+### Checking StateSnapshot history
+# analyzer = Analyzer()
+# important_fields = {
+#     "config",
+#     "parent_config",
+#     "values",
+# }
+
+### Last snapshot
+# latest_state_snapshot = agent.graph.get_state(config)
+# print(analyzer.analyze_snapshot(latest_state_snapshot, important_fields))
+
+
+
+#### graph.get_state_history
+# hist = agent.graph.get_state_history(config)
+# hist_list = list(hist)
+# print(analyzer.analyze_history(hist_list, important_fields))
+
+
+# print(analyzer.analyze_snapshot(hist_list[-2], important_fields))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

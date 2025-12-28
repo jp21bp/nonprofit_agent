@@ -33,7 +33,7 @@ from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 ### Utilities library
-from utilities import *
+from .utilities import *
 
 #### Setting up environment
 load_dotenv()
@@ -74,7 +74,8 @@ embedding_model = JinaEmbeddings(
         # [1,2,3].append([4,5]) = [1,2,3,[4,5]]
         # [1,2,3].extend([4,5]) = [1,2,3,4,5]
 #### Loading text file(s)
-docs_path = os.path.join(os.getcwd(), 'links_and_documents')
+# docs_path = os.path.join(os.getcwd(), 'links_and_documents')
+docs_path = "/home/jp/Documents/PersonalProjects/Project1/grants_module"
 
 def load_files(docs_path: str) -> list:
     loaded_docs = []
@@ -100,10 +101,6 @@ def split_docs(loaded_docs: list) -> list:
     chunked_docs = text_splitter.split_documents(loaded_docs)
     return chunked_docs
 
-
-## Checking the size of the chunked docs for Jina embed
-# sample = split_docs(load_files(docs_path))
-# print(len(sample))
 
 #### Creating vector store
 directory = "IndexStore"
