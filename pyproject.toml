@@ -5,7 +5,12 @@ description = "First fully personalized agentic project"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "grandalf>=0.8",
     "langchain>=1.2.0",
+    "langchain-cohere>=0.5.0",
     "langchain-community>=0.4.1",
+    "langchain-google-genai>=4.1.2",
+    "langgraph-checkpoint-postgres>=3.0.2",
+    "langgraph-checkpoint-sqlite>=3.0.1",
     "langmem>=0.0.30",
 ]
