@@ -10,7 +10,7 @@ import os, operator
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 ### Manually created modules
-from utilities import *
+from utilities_module.utilities import *
 from prompts import *
 ### Typing libraries
 from typing import Optional, Literal, List
@@ -27,6 +27,7 @@ from langchain_cohere import CohereEmbeddings
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.store.postgres import PostgresStore
 from psycopg import Connection
+
 
 #### Unpacking ENV variables
 load_dotenv()
