@@ -74,7 +74,7 @@ embedding_model = JinaEmbeddings(
         # [1,2,3].append([4,5]) = [1,2,3,[4,5]]
         # [1,2,3].extend([4,5]) = [1,2,3,4,5]
 #### Loading text file(s)
-docs_path = "/home/jp/Documents/ComplexifyAgents/LangGraph/Course2_7/GrantsWriter/links_and_documents"
+docs_path = os.path.join(os.getcwd(), 'links_and_documents')
 
 def load_files(docs_path: str) -> list:
     loaded_docs = []
@@ -285,7 +285,7 @@ cadena_espanol = inputs | extract | mini_cadena.map()
 #### Putting it all together
 ### Setting up Utilities class for working with data
 DB_NAME = 'output.db'
-TABLE_NAME = 'main'
+TABLE_NAME = 'rag'
 storage = Storage(DB_NAME, TABLE_NAME)
 
 # utilities = Analyzer()
@@ -350,14 +350,6 @@ class RAG():
             # El node del main guarda este resultado
         return final_context, self.data_id, self.metrics
 
-
-# rag = RAG(DATA_ID)
-# final_context, last_id = rag.invoke("What are current educational projects?")
-# print(final_context)
-# print('='*50)
-# print(last_id)
-# print('='*50)
-# print(rag.metrics.history)
 
 
 
