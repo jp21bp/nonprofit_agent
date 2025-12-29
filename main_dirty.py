@@ -20,7 +20,8 @@ from typing_extensions import TypedDict, Annotated
 from langchain.agents import create_agent
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AnyMessage,\
+    SystemMessage, HumanMessage
 ### Model libraries
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_cohere import CohereEmbeddings
@@ -41,10 +42,10 @@ base_llm = ChatGoogleGenerativeAI(
     api_key = google_api_key,
     model = "gemini-2.5-flash-lite",
 )
-embedding_model = CohereEmbeddings(
-    cohere_api_key=cohere_api_key,
-    model = "embed-english-light-v3.0",
-)
+# embedding_model = CohereEmbeddings(
+#     cohere_api_key=cohere_api_key,
+#     model = "embed-english-light-v3.0",
+# )
 
 #### Setup DB storage utility
 DB_NAME = "output.sqlite"
@@ -66,7 +67,7 @@ long_conn = Connection.connect(
 )
 store = PostgresStore(
     long_conn,
-    index={'embed': embedding_model, 'dims': 384}
+    # index={'embed': embedding_model, 'dims': 384}
 )
 store.setup()
 
@@ -122,18 +123,25 @@ def store_items(
 
 def retrieve_items(
     store: PostgresStore,
-    items_list: list,
-    namespace: str
+    namespace: str,
+    items_names: list,
 ):
     items = {}
-    for item_name in items_list:
+    for name in items_names:
         to_store = store.get(
             namespace,
-            item_name,
+            name,
         )
-        items[item_name] = to_store.value
+        items[name] = to_store.value
     
     return items
+
+
+
+
+
+
+
 
 
 
@@ -203,7 +211,14 @@ for category, rule in prompt_instructions['router_rules'].items():
 
 
 
-##### Creating LLMs
+
+
+
+
+
+
+
+##### Setting up LLMs
 #### Router LLM
 ### Pydantic model
 class Router(BaseModel):
@@ -233,43 +248,78 @@ llm_router = base_llm.with_structured_output(Router, include_raw=True)
 
 
 
+#### Grants Formatter LLM
+    # This will be used to extract the theme of the request being sent
+    # It will return a structured llm pydantic output
+        # WHich will be extract and inserted into the grants subagent
+### Pydantic model
+class GrantsFormatter(BaseModel):
+    """Extract general information related to a request about grant proposals"""
+    
+    theme: str = Field(
+        description="The underlying theme related to the request"
+    )
 
+### Creating model with pydantic output
+grants_formatter_llm = base_llm.with_structured_output(GrantsFormatter, include_raw=True)
 
+### Few shot examples
+## Data model/template
+data_model = """\
+Incoming query: {query}
+> Theme: {theme}
+"""
+## Helper function
+def grants_few_shots(examples):
+    strs = ["Here are some examples to follow:"]
+    for ex in examples:
+        strs.append(
+            data_model.format(
+                query = ex["query"],
+                theme = ex["theme"]
+            )
+        )
+    return "\n--------------------------\n".join(strs)
 
+## Creating examples
+example1 = {
+    "query" : "Write a proposal to help me fund an computer class training for highschool students",
+    "theme": "High school education computer class project"
+}
 
+example2 = {
+    "query": "Give me a proposal to teach young adults how to negotiate",
+    "theme": "Adults business skill on negotiation"
+}
 
+example3 = {
+    "query": "I need a proposal on strengthening community relationships",
+    "theme": "Community building through relationships"
+}
 
+example4 = {
+    "query": "A proposal on workshops that will teach financial literacy to community adults",
+    "theme": "Financial literarcy project"
+}
 
+## Putting examples into long term memory
+NUM_EXS = 4
+examples = []
+names = []
+namespace = (LG_USER_ID, "few_shot_examples", "grants")
+for i in range(NUM_EXS):
+    exec(f"examples.append(example{i+1})")
+    store_items(
+        store,
+        namespace,
+        f"grants_{i}",
+        examples[i]
+    )
+    exec(f"names.append('grants_{i}')")
 
+items = retrieve_items(store, namespace, names)
+# print(grants_few_shots(items.values()))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-##### Creating sub-agents
-#### Grants sub-agent
-grants_agent = grants_agent
 
 
 
@@ -327,10 +377,19 @@ grants_agent = grants_agent
 class AgentState(TypedDict):
     messages: Annotated[List[AnyMessage], operator.add]
     metrics: Annotated[dict[str, dict[str, int]], operator.or_]
+    # grants_start_state: dict
+    # events_start_state: dict
+    # emails_start_state: dict
+
 #### Creating router node
-def main_router_node(state: AgentState) -> Command[
-    # Literal["grants", "events", "emails", "__end__"]
-    Literal["grants_subagent","__end__"]
+def main_router_node(state: AgentState) -> \
+Command[
+    Literal[
+        "grants_formatter", 
+        "events_formatter", 
+        "emails_formatter", 
+        "__end__"
+    ]
 ]:
     ## Setting up objects router LLM
     metrics = Metrics()
@@ -342,7 +401,7 @@ def main_router_node(state: AgentState) -> Command[
     
     ## Retrieving instructions
     instructions = ["grants_rule", "events_rule", "emails_rule"]
-    instructs = retrieve_items(store, instructions, instruct_namespace)
+    instructs = retrieve_items(store, instruct_namespace, instructions)
 
     ## Creating system prompt
     system_prompt = router_system_prompt.format(
@@ -352,15 +411,15 @@ def main_router_node(state: AgentState) -> Command[
         examples=None
     )
 
-    user_prompt = router_user_prompt.format(
+    user_prompt = general_user_prompt.format(
         user_query = state['messages'][0].content
     )
 
     ## Invoking the router
     result = llm_router.invoke(
         [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt),
         ]
     )
     ai_msg = result['raw']
@@ -379,24 +438,70 @@ def main_router_node(state: AgentState) -> Command[
 
     ## Setting up next node to traverse
     result = result['parsed']
-    if result.classification == 'grants_subagent':
+    if result.classification == 'grants_formatter':
         print('Classification: Grants')
-        goto = 'grants'
-    # elif result.classification == 'events':
-    #     print('Classificaiton: Events')
-    #     goto = 'events'
-    # elif result.classication == 'emails':
-    #     print('Classification: Emails')
-    #     goto = 'emails'
+
+        grants_start_state = {
+            'messages': state['messages'],
+            'theme': 'educational projects',
+            'doner_requirements': 'final proposal needs to be one page long',
+            'num_revisions': 0,
+            'max_revisions': 2,
+            'id_counter': 1,
+        }
+        goto = 'grants_formatter'
+    elif result.classification == 'events_formatter':
+        print('Classificaiton: Events')
+        goto = 'events_formatter'
+    elif result.classication == 'emails_formatter':
+        print('Classification: Emails')
+        goto = 'emails_formatter'
     else:
         raise ValueError(f"Invalid classificaiton: {result.classification}")
     
     ## Updating agent state
     return Command(goto=goto, update=update)
 
-#### Creating grants subagent node
+
+
+
+
+
+#### Formatter LLMs
+### Grants
+def grants_formatter(state: AgentState):
+    return
+### Events
+def events_formatter(state: AgentState):
+    return
+### Emails
+def emails_formatter(state: AgentState):
+    return
+
+
+
+
+
+
+
+#### Sub-agents
+### Grants subagent 
 def grants_agent_node(state: AgentState):
-    # TODO: fully integrate with grants agent
+    ### Setting up objects for the grants subagent
+    metrics = Metrics()
+    upgate = {}
+    goto = "__end__"
+
+    return
+
+### Events subagent
+def events_agent_node(state: AgentState):
+    # TODO: create an events agent
+    return
+
+### Emails subagent
+def emails_agent_node(state: AgentState):
+    # TODO:  integrate email agent
     return
 
 
@@ -423,12 +528,23 @@ def grants_agent_node(state: AgentState):
 
 
 
-
 ##### Creating Agent
+#### Initialize state graph
 main_agent = StateGraph(AgentState)
+#### Adding nodes
 main_agent = main_agent.add_node("main_router", main_router_node)
+main_agent = main_agent.add_node(grants_formatter)
+main_agent = main_agent.add_node(events_formatter)
+main_agent = main_agent.add_node(emails_formatter)
 main_agent = main_agent.add_node("grants_subagent", grants_agent_node)
+main_agent = main_agent.add_node("events_subagent", events_agent_node)
+main_agent = main_agent.add_node("emails_subagent", emails_agent_node)
+#### Adding edges
 main_agent = main_agent.add_edge(START, "main_router")
+main_agent = main_agent.add_edge("grants_formatter", "grants_subagent")
+main_agent = main_agent.add_edge("events_formatter", "events_subagent")
+main_agent = main_agent.add_edge("emails_formatter", "emails_subagent")
+#### Compiling agent
 main_agent = main_agent.compile(
     checkpointer=checkpointer,
     store=store

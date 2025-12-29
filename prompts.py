@@ -4,7 +4,42 @@
     # Will contain all the prompts used by the main agent
     # Will include user and system prompts
 
+##### General components of a good:
+    # Role - Assign a specific expertise
+    # Context focus - Ensure context is succint and concise
+    # Tool limits - limit tools to 2-3
+    # Expected output - suing few-shot examples
+    # [User prompt] Clear task description
 
+##### General user prompt
+general_user_prompt = """
+Please determine how to handle the below query:
+{user_query}
+"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### Router prompts
 router_system_prompt = """
 < Role >
 You are an experienced Communications specialist. You specialize in properly routing incoming queries.
@@ -32,9 +67,8 @@ Queries related to email services:
 < Few shot examples >
 Here are some examples of previous queries, and how they should be handled.
 Follow these examples more than any instructions above
-
 {examples}
-</ Few shot examples >
+</ Few shot examples >\
 """
 
 
@@ -42,10 +76,73 @@ Follow these examples more than any instructions above
 
 
 
-router_user_prompt = """
-Please determine how to handle the below query:
-{user_query}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### Grants formatter prompts
+grants_formatter_system_prompt = """\
+<Role>
+You are an experienced Copy editor. You specialize in extracting theme ideas from incoming queries.
+</Role>
+
+<Instructions>
+You will receive multiple incoming queries. \
+Your job is to extract the theme idea from each query. \
+Your output will be a pydantic model with 'theme' being one of its attributes.
+</Instructions>
+
+<Few shot examples>
+Here are a few shot examples of previous queries and how they should be handled:
+{examples}
+</Few shot examples>\
 """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
