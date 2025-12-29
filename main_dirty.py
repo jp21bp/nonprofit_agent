@@ -414,6 +414,7 @@ Command[
         examples=None
     )
 
+    ## Crating user prompt
     user_prompt = general_user_prompt.format(
         user_query = state['messages'][0].content
     )
@@ -566,9 +567,20 @@ def grants_agent_node(state: AgentState):
     metrics = Metrics()
     upgate = {}
 
-    
+    ## Invoking the grants agent
+    result = grants_agent.invoke(
+        state['grants_start_state']
+    )
+        # Will return the FINAL Grant's agent state values
 
-    return
+    ## Extract the necessary attributes from Grant's final agent state
+    update = {
+        'messages': result['messages'], # Extra [] not needed bc already list
+        'metrics' : result['metrics'],
+    }
+
+    ## Update main agent state
+    return update
 
 ### Events subagent
 def events_agent_node(state: AgentState):
