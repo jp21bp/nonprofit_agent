@@ -261,7 +261,10 @@ class GrantsFormatter(BaseModel):
     )
 
 ### Creating model with pydantic output
-grants_formatter_llm = base_llm.with_structured_output(GrantsFormatter, include_raw=True)
+grants_formatter_llm = base_llm.with_structured_output(
+    GrantsFormatter, 
+    include_raw=True
+)
 
 ### Few shot examples
 ## Data model/template
@@ -317,9 +320,9 @@ for i in range(NUM_EXS):
     )
     exec(f"names.append('grants_{i}')")
 
-items = retrieve_items(store, namespace, names)
-# print(grants_few_shots(items.values()))
-
+# items = retrieve_items(store, namespace, names)
+# few_shots = grants_few_shots(items.values())
+# print(grants_formatter_system_prompt.format(examples=few_shots))
 
 
 
@@ -377,7 +380,7 @@ items = retrieve_items(store, namespace, names)
 class AgentState(TypedDict):
     messages: Annotated[List[AnyMessage], operator.add]
     metrics: Annotated[dict[str, dict[str, int]], operator.or_]
-    # grants_start_state: dict
+    grants_start_state: dict
     # events_start_state: dict
     # emails_start_state: dict
 
@@ -391,7 +394,7 @@ Command[
         "__end__"
     ]
 ]:
-    ## Setting up objects router LLM
+    ## Setting up objects for router LLM
     metrics = Metrics()
     update = {}
     goto = "__end__"
@@ -441,14 +444,14 @@ Command[
     if result.classification == 'grants_formatter':
         print('Classification: Grants')
 
-        grants_start_state = {
-            'messages': state['messages'],
-            'theme': 'educational projects',
-            'doner_requirements': 'final proposal needs to be one page long',
-            'num_revisions': 0,
-            'max_revisions': 2,
-            'id_counter': 1,
-        }
+        # grants_start_state = {
+        #     'messages': [user_query],
+        #     'theme': 'educational projects',
+        #     'doner_requirements': 'final proposal needs to be one page long',
+        #     'num_revisions': 0,
+        #     'max_revisions': 2,
+        #     'id_counter': 1,
+        # }
         goto = 'grants_formatter'
     elif result.classification == 'events_formatter':
         print('Classificaiton: Events')
@@ -467,10 +470,76 @@ Command[
 
 
 
-#### Formatter LLMs
+
+
+
+
+
+
+
+#### Formatter LLMs nodes
 ### Grants
 def grants_formatter(state: AgentState):
-    return
+    ## Setting up objects for grants formatter
+    metrics = Metrics()
+    update = {}
+    user_query = state['messages'][0].content
+
+    ## Retrieving few shot examples
+    namespace = (LG_USER_ID, "few_shot_examples", "grants")
+    examples = retrieve_items(store, namespace, names)
+    few_shots_exs = grants_few_shots(examples.values())
+
+    ## Creating system prompt
+    system_prompt = grants_formatter_system_prompt.format(
+        examples = few_shots_exs
+    )
+
+    ## Creating user prompt
+    user_prompt = general_user_prompt.format(
+        query = user_query
+    )
+
+    ## Invoking grants formatter
+    result = grants_formatter_llm.invoke([
+        SystemMessage(content = system_prompt),
+        HumanMessage(content = user_prompt),
+    ])
+
+    ## Extracting raw AI response
+    ai_msg = result['raw']
+    message_update = {
+        "messages": [ai_msg]
+    }
+    update = update | message_update
+
+    ## Analyzing the invoked metrics
+    extract = metrics.extract_tokens_used(ai_msg, "grants_formatter_node")
+    metrics = metrics.aggregate(extract)
+    metrics_update = {
+        "metrics": metrics.history
+    }
+    update = update | metrics_update
+
+    ## Setting up the grants starting state
+    grants_start_state = {
+        'messages': [user_query],
+        'theme': result['parsed'].theme,
+        'doner_requirements': 'final proposal needs to be one page long',
+        'num_revisions': 0,
+        'max_revisions': 2,
+        'id_counter': 0
+    }
+    grants_start_state_update = {
+        "grants_start_state": grants_start_state,
+    }
+
+    update = update | grants_start_state_update
+
+    ## Update state
+    return update
+
+
 ### Events
 def events_formatter(state: AgentState):
     return
@@ -484,13 +553,20 @@ def emails_formatter(state: AgentState):
 
 
 
+
+
+
+
+
+
 #### Sub-agents
 ### Grants subagent 
 def grants_agent_node(state: AgentState):
     ### Setting up objects for the grants subagent
     metrics = Metrics()
     upgate = {}
-    goto = "__end__"
+
+    
 
     return
 
@@ -573,7 +649,7 @@ main_agent = main_agent.compile(
 
 
 ##### Visualize main agent grpah
-print(main_agent.get_graph().draw_ascii())
+# print(main_agent.get_graph().draw_ascii())
 
 
 

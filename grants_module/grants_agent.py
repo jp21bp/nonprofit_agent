@@ -43,11 +43,11 @@ DB_NAME = 'output.db'
 TABLE_NAME = 'grants_agent'
 storage = Storage(DB_NAME, TABLE_NAME)
 
-#### Setup checkpointer for agent
-conn = sqlite3.connect('checkpoints.sqlite', check_same_thread=False)
-    #"check_same_thread = False" => enables multi-thread usage
-memory = SqliteSaver(conn)
-
+# #### Setup checkpointer for agent
+# conn = sqlite3.connect('checkpoints.sqlite', check_same_thread=False)
+#     #"check_same_thread = False" => enables multi-thread usage
+# memory = SqliteSaver(conn)
+## Not needed bc it will inherit from parent
 
 
 
@@ -277,7 +277,8 @@ class GrantsAgent:
 
         ### Graph compilation
         self.graph = graph.compile(
-            checkpointer=memory,
+            # checkpointer=memory,
+                ## Not needed bc we'll use the parent's checkpointer
         )
 
         ### Graph attributes
