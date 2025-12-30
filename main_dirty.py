@@ -30,6 +30,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 from langchain_core.messages import AnyMessage,\
     SystemMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 ### Model libraries
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_cohere import CohereEmbeddings
@@ -84,14 +85,15 @@ store.setup()
 LG_USER_ID = "jp"
 THREAD_NUM = 1
 
-config = {
-    'configurable':{
+config = RunnableConfig(
+    configurable = {
         'langgraph_user_id': LG_USER_ID,
         'thread_id': str(THREAD_NUM),
         'store': store,
         'storage': storage,
     }
-}
+)
+
     # Recall, the config is passed onto children subgraphs
 
 
@@ -396,7 +398,7 @@ class AgentState(TypedDict):
     # emails_start_state: dict
 
 #### Creating router node
-def main_router_node(state: AgentState, config: dict) -> \
+def main_router_node(state: AgentState, config: RunnableConfig) -> \
 Command[
     Literal[
         "grants_formatter", 
