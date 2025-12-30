@@ -3,6 +3,14 @@
     # It will use sub-agents to complete a variety of tasks
     # The sub-agents will be found in other files
 
+##### Full documentation on subgraphs
+    #https://docs.langchain.com/oss/python/langgraph/use-subgraphs#full-example-different-state-schemas
+
+#### To read:
+    # https://docs.langchain.com/oss/python/langchain/runtime
+    # https://docs.langchain.com/oss/python/langchain/long-term-memory
+
+
 ##### General setup
 #### Importing libraries
 ### General libraries
@@ -50,7 +58,7 @@ base_llm = ChatGoogleGenerativeAI(
 #### Setup DB storage utility
 DB_NAME = "output.sqlite"
 TABLE_NAME = "main_agent"
-storage = Storage(DB_NAME, TABLE_NAME)
+storage = Storage(DB_NAME)
 
 #### Creating memories
 ### Short-term memories
@@ -80,8 +88,11 @@ config = {
     'configurable':{
         'langgraph_user_id': LG_USER_ID,
         'thread_id': str(THREAD_NUM),
+        'store': store,
+        'storage': storage,
     }
 }
+    # Recall, the config is passed onto children subgraphs
 
 
 
@@ -385,7 +396,7 @@ class AgentState(TypedDict):
     # emails_start_state: dict
 
 #### Creating router node
-def main_router_node(state: AgentState) -> \
+def main_router_node(state: AgentState, config: dict) -> \
 Command[
     Literal[
         "grants_formatter", 
@@ -480,7 +491,7 @@ Command[
 
 #### Formatter LLMs nodes
 ### Grants
-def grants_formatter(state: AgentState):
+def grants_formatter(state: AgentState, config: dict):
     ## Setting up objects for grants formatter
     metrics = Metrics()
     update = {}
@@ -542,10 +553,10 @@ def grants_formatter(state: AgentState):
 
 
 ### Events
-def events_formatter(state: AgentState):
+def events_formatter(state: AgentState, config: dict):
     return
 ### Emails
-def emails_formatter(state: AgentState):
+def emails_formatter(state: AgentState, config: dict):
     return
 
 
@@ -562,14 +573,15 @@ def emails_formatter(state: AgentState):
 
 #### Sub-agents
 ### Grants subagent 
-def grants_agent_node(state: AgentState):
+def grants_agent_node(state: AgentState, config: dict):
     ### Setting up objects for the grants subagent
     metrics = Metrics()
     upgate = {}
 
     ## Invoking the grants agent
     result = grants_agent.invoke(
-        state['grants_start_state']
+        state['grants_start_state'],
+        config=config
     )
         # Will return the FINAL Grant's agent state values
 
@@ -583,12 +595,12 @@ def grants_agent_node(state: AgentState):
     return update
 
 ### Events subagent
-def events_agent_node(state: AgentState):
+def events_agent_node(state: AgentState, config: dict):
     # TODO: create an events agent
     return
 
 ### Emails subagent
-def emails_agent_node(state: AgentState):
+def emails_agent_node(state: AgentState, config: dict):
     # TODO:  integrate email agent
     return
 
@@ -661,7 +673,7 @@ main_agent = main_agent.compile(
 
 
 ##### Visualize main agent grpah
-# print(main_agent.get_graph().draw_ascii())
+print(main_agent.get_graph().draw_ascii())
 
 
 

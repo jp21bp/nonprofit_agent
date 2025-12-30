@@ -151,40 +151,31 @@ class Metrics():
 ##### Storage class
     # Save and retrieve data to a local db
 class Storage():
-    def __init__(self, db_name: str):
+    def __init__(self, db_name: str, table_name: str):
         self.db_name = db_name
+        self.table_name = table_name
 
     #### Saving data to sqlite
-    def save_data(
-            self, 
-            table_name: str, 
-            data, 
-            data_id: int, 
-            data_name: str = "NoneGiven"
-        ):
+    def save_data(self, data, data_id: int, data_name: str = "NoneGiven"):
         pickled_data = pickle.dumps(data)
         with sqlite3.connect(self.db_name) as conn:
             conn.execute(
-                f'CREATE TABLE IF NOT EXISTS {table_name} (data_id INTEGER, data_name VARCHAR(255), content BLOB)'
+                f'CREATE TABLE IF NOT EXISTS {self.table_name} (data_id INTEGER, data_name VARCHAR(255), content BLOB)'
             )
             conn.execute(
-                f'INSERT INTO {table_name} (data_id, data_name, content) VALUES (?,?,?)',
+                f'INSERT INTO {self.table_name} (data_id, data_name, content) VALUES (?,?,?)',
                 (data_id, data_name, sqlite3.Binary(pickled_data))
             )
             conn.commit()
             return data_id + 1
 
     #### Retrieving data from sqlite
-    def retrieve_data(
-            self, 
-            table_name: str,
-            data_id: int
-        ):
+    def retrieve_data(self, data_id: int):
         with sqlite3.connect(self.db_name) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
-                f'SELECT content FROM {table_name} WHERE data_id = ?',
+                f'SELECT content FROM {self.table_name} WHERE data_id = ?',
                 (data_id,)
             )
             row = cursor.fetchone()
