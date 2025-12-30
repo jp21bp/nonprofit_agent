@@ -32,6 +32,8 @@ from langchain_cohere import ChatCohere
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
+### Utilities library
+from .utilities import *
 
 #### Setting up environment
 load_dotenv()
@@ -279,24 +281,18 @@ cadena_espanol = inputs | extract | mini_cadena.map()
 ##### Main pipeline
 #### Putting it all together
 ### Setting up Utilities class for working with data
-# DB_NAME = 'output.db'
+DB_NAME = 'output.db'
 TABLE_NAME = 'rag'
-# storage = Storage(DB_NAME, TABLE_NAME)
+storage = Storage(DB_NAME, TABLE_NAME)
 
 # utilities = Analyzer()
 ### Create the RAG class
 class RAG():
     def __init__(self):
+        self.metrics = Metrics()
         self.data_id = None
 
-    def invoke(
-            self, 
-            user_input: str, 
-            storage,
-            metrics,
-            data_id: int = None, 
-            base_name: str = 'NONE',
-        ) -> str:
+    def invoke(self, user_input: str, data_id: int = None, base_name: str = 'NONE') -> str:
         ### Updating data_id
         self.data_id = data_id
 

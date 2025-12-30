@@ -16,7 +16,6 @@ from langchain_core.messages import AnyMessage,\
     HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages.utils import merge_message_runs
 from langchain_core.prompts.chat import ChatPromptTemplate
-from langchain_core.runnables.config import RunnableConfig
 ### Model libraries
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mistralai.chat_models import ChatMistralAI
@@ -39,13 +38,9 @@ llm = ChatMistralAI(
 rag = RAG()
 
 #### Setting up DB storage utility
-    # Will only create the TABLE_NAME
-    # Since the "Storage" will be inherited from parent graph
-    # That way the same DB can be used for entire agent
-# DB_NAME = 'output.db'
+DB_NAME = 'output.db'
 TABLE_NAME = 'grants_agent'
-# storage = Storage(DB_NAME, TABLE_NAME)
-
+storage = Storage(DB_NAME, TABLE_NAME)
 
 # #### Setup checkpointer for agent
 # conn = sqlite3.connect('checkpoints.sqlite', check_same_thread=False)
@@ -289,6 +284,7 @@ class GrantsAgent:
         self.llm = llm
         self.rag = rag
         self.mini_sys_prompts = mini_sys_prompts
+        self.metrics = Metrics()
 
 
     #### Conditional edge logic
@@ -299,51 +295,39 @@ class GrantsAgent:
 
 
     #### Rag node logic
-    def rag_node(self, state: AgentState, config: RunnableConfig):
-        ### Setup
+    def rag_node(self, state: AgentState):
+        print('Inside rag node\n\n')
+        ### Model invocation
         name = 'rag_node'
-        storage = config['configurable']['storage']
-        metrics = state['metrics']
         user_query = state['messages'][0]
         id_counter = state['id_counter']
-        ### Model invocation
-        rag_result, id_counter, rag_metrics = self.rag.invoke(
-            user_query, 
-            storage,
-            metrics,
-            id_counter,
-            name
-        )
-        print('Rag result')
+        rag_result, id_counter, rag_metrics = self.rag.invoke(user_query, id_counter,name)
+        print(f"'rag' db index at index: {id_counter}")
         print(rag_result)
         print('\n' + '=' * 50 + '\n')
 
         ### Storage saving
-        id_counter = storage.save_data(rag_result, TABLE_NAME, id_counter, name)
+        id_counter = storage.save_data(rag_result, id_counter, name)
 
         ### Metrics analysis
-        metrics.history = self.metrics.history | rag_metrics.history
+        self.metrics.history = self.metrics.history | rag_metrics.history
         print('Rag metrics')
-        print(metrics.history)
+        print(self.metrics.history)
         print('\n' + '=' * 50 + '\n')
 
         ### Update AgentState
         return {"rag_context": [rag_result], 
                 "id_counter": id_counter,
                 "messages": [AIMessage(content='Initial RAG')],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
 
     #### Plan node logic
-    def plan_node(self, state: AgentState, config: RunnableConfig):
-        ### Setup
-        name = 'plan_node'
-        storage = config['configurable']['storage']
-        id_counter = state['id_counter']
-        metrics = state['metrics']
-
+    def plan_node(self, state: AgentState):
+        print('Inside plan node\n\n')
         ### Model invocation
         ## Setup prompts
+        name = 'plan_node'
         USER_PROMPT = """\
 Write all section outlines for the following theme: {theme}. \
 The organizational context regarding this proposal and theme is:
@@ -363,31 +347,30 @@ The organizational context regarding this proposal and theme is:
         })
         model = self.llm.with_structured_output(SectionOutlines, include_raw=True)
         plan = model.invoke(msgs)
-        print("Plan result")
+        print(f"'Plan' DB data is with index: {state['id_counter']}")
         print(plan)
         print('\n' + '=' * 50 + '\n')
 
         ### Storage saving
-        id_counter = storage.save_data(plan, TABLE_NAME, id_counter, name)
+        id_counter = state['id_counter']
+        id_counter = storage.save_data(plan, id_counter, name)
 
         ### Metrics analysis
-        extract = metrics.extract_tokens_used(plan['raw'], name)
-        metrics = metrics.aggregate(extract)
+        extract = self.metrics.extract_tokens_used(plan['raw'], name)
+        self.metrics = self.metrics.aggregate(extract)
         print('plan metrics')
-        print(metrics.history)
+        print(self.metrics.history)
         print('\n' + '=' * 50 + '\n')
 
         ### Update AgentState
         return {"plan" : plan['parsed'], 
                 'id_counter' : id_counter,
                 'messages': [plan['raw']],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
 
     #### Template for mini section agents
     def mini_agent_template(self, state: AgentState, key: str):
-        ### Setup
-        metrics = state['metrics']
         ### Model invocation
         ## Creating prompts
         replacements = {
@@ -407,10 +390,10 @@ The organizational context regarding this proposal and theme is:
             # Will be done in "self.minis_to_db" due to concurrency
 
         ### Metrics analysis
-        extract = metrics.extract_tokens_used(response, key)
-        metrics = metrics.aggregate(extract)
+        extract = self.metrics.extract_tokens_used(response, key)
+        self.metrics = self.metrics.aggregate(extract)
         print(f'metrics for {key}')
-        print(metrics.history)
+        print(self.metrics.history)
         print('\n' + '=' * 50 + '\n')
 
         ### Update AgentState
@@ -420,71 +403,69 @@ The organizational context regarding this proposal and theme is:
             [section_annotation, response], 
             chunk_separator = " -- "
         )[0]
-        return response, metrics
+        return response
 
 
     #### Creating mini section agents/nodes
-    def cover_node(self, state: AgentState, config: RunnableConfig):
+    def cover_node(self, state: AgentState):
         key = 'cover_letter'
-        response, metrics = self.mini_agent_template(state, key)
+        response = self.mini_agent_template(state, key)
         return {'mini_sections_first_half': {'section_one': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
-    def executive_node(self, state: AgentState, config: RunnableConfig):
+    def executive_node(self, state: AgentState):
         key = 'executive_summary'
-        response, metrics = self.mini_agent_template(state, key)
+        response = self.mini_agent_template(state, key)
         return {'mini_sections_first_half': {'section_two': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
     
-    def need_node(self, state: AgentState, config: RunnableConfig):
+    def need_node(self, state: AgentState):
         key = 'statement_of_need'
-        response, metrics = self.mini_agent_template(state, key)
+        response = self.mini_agent_template(state, key)
         return {'mini_sections_first_half': {'section_three': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
-    def goal_node(self, state: AgentState, config: RunnableConfig):
+    def goal_node(self, state: AgentState):
         key = 'goals_and_objective'
-        response, metrics = self.mini_agent_template(state, key)
+        response = self.mini_agent_template(state, key)
         return {'mini_sections_first_half': {'section_four': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
-    def methods_node(self, state: AgentState, config: RunnableConfig):
+    def methods_node(self, state: AgentState):
         key = 'methods_and_strategies'
-        response, metrics = self.mini_agent_template(state, key)
+        response = self.mini_agent_template(state, key)
         return {'mini_sections_second_half': {'section_one': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
-    def eval_node(self, state: AgentState, config: RunnableConfig):
+    def eval_node(self, state: AgentState):
         key = 'plan_of_evaluation'
-        response, metrics = self.mini_agent_template(state, key)
+        response = self.mini_agent_template(state, key)
         return {'mini_sections_second_half': {'section_two': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
-    def budget_node(self, state: AgentState, config: RunnableConfig):
+    def budget_node(self, state: AgentState):
         key = 'budget_information'
-        response, metrics = self.mini_agent_template(state, key)
+        response = self.mini_agent_template(state, key)
         return {'mini_sections_second_half': {'section_three': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
-    def background_node(self, state: AgentState, config: RunnableConfig):
+    def background_node(self, state: AgentState):
         key = 'organizational_background'
-        response, metrics = self.mini_agent_template(state, key)
+        response = self.mini_agent_template(state, key)
         return {'mini_sections_second_half': {'section_four': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
 
     #### Template for mini summarizer agents
     def summarizer_agent_template(self, state: AgentState, key: str):
-        ### Setup
-        metrics = state['metrics']
         ### Model invocacion
         ## Creating prompts
         replacements = {
@@ -509,10 +490,10 @@ The organizational context regarding this proposal and theme is:
                     #"self.mini_to_db"
         
         ### Metrics analysis
-        extract = metrics.extract_tokens_used(response, key)
-        metrics = metrics.aggregate(extract)
+        extract = self.metrics.extract_tokens_used(response, key)
+        self.metrics = self.metrics.aggregate(extract)
         print(f'metrics for {key}')
-        print(metrics.history) 
+        print(self.metrics.history) 
         print('\n' + '=' * 50 + '\n')
 
         ### Updating AgentState
@@ -522,55 +503,49 @@ The organizational context regarding this proposal and theme is:
             [section_annotation, response], 
             chunk_separator = " -- ",
         )[0]
-        return response, metrics
+        return response
 
 
     #### Creating mini summarizer agents/nodes
-    def summarizer_one(self, state: AgentState, config: RunnableConfig):
+    def summarizer_one(self, state: AgentState):
         key = 'first_half'
-        response, metrics = self.summarizer_agent_template(state, key)
+        response = self.summarizer_agent_template(state, key)
         return {'summarizer_sections': {f'{key}': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
     
-    def summarizer_two(self, state: AgentState, config: RunnableConfig):
+    def summarizer_two(self, state: AgentState):
         key = 'second_half'
-        response, metrics = self.summarizer_agent_template(state, key)
+        response = self.summarizer_agent_template(state, key)
         return {'summarizer_sections': {f'{key}': response}, 
                 'messages': [response],
-                'metrics': metrics.history,}
+                'metrics': self.metrics.history,}
 
 
 
     #### Saving mini agents results to DB
-    def minis_to_db(self, state: AgentState, config: RunnableConfig):
-        ### Setup
+    def minis_to_db(self, state: AgentState):
         id_counter = state['id_counter']
-        storage = config['configurable']['storage']
         to_save = [
             'mini_sections_first_half',
             'mini_sections_second_half',
             'summarizer_sections',
         ]
-        ### Saving
         for keys in to_save:
             for name, AiMsg in state[keys].items():
-                id_counter = storage.save_data(AiMsg, TABLE_NAME, id_counter, f'{keys}_{name}')
+                id_counter = storage.save_data(AiMsg, id_counter, f'{keys}_{name}')
         return id_counter
 
 
     #### Loop nodes
     ### Draft node
-    def draft_node(self, state: AgentState, config: RunnableConfig):
-        ### Setup
-        id_counter = state['id_counter']
-        metrics = state['metrics']
-        storage = config['configurable']['storage']
-
+    def draft_node(self, state: AgentState):
+        print('Inside draft node\n\n')
         ### Saving previous mini agents
+        id_counter = state['id_counter']
         if state['num_revisions'] == 0:
             print('Saving mini agents')
-            id_counter = self.minis_to_db(state, config)
+            id_counter = self.minis_to_db(state)
             print('\n' + '=' * 50 + '\n')
 
         ### Model invocation
@@ -608,13 +583,13 @@ retrieved from the organization's webpage using RAG, when completing your task:
         print('post-invocation')
 
         ### Guardar los resultados
-        id_counter = storage.save_data(draft, TABLE_NAME, id_counter, name)
+        id_counter = storage.save_data(draft, id_counter, name)
 
         ### Analizar los metricos
-        extract = metrics.extract_tokens_used(draft, name)
-        metrics = metrics.aggregate(extract)
+        extract = self.metrics.extract_tokens_used(draft, name)
+        self.metrics = self.metrics.aggregate(extract)
         print(f'{name} metrics')
-        print(metrics.history)
+        print(self.metrics.history)
         print('\n' + '=' * 50 + '\n')
 
         ## Updating AgentState
@@ -623,17 +598,13 @@ retrieved from the organization's webpage using RAG, when completing your task:
             'draft': [draft], 
             'num_revisions': state['num_revisions'] + 1,
             'id_counter' : id_counter,
-            'metrics': metrics.history,
+            'metrics': self.metrics.history,
         }
 
 
     ### Critique node
-    def critique_node(self, state: AgentState, config: RunnableConfig):
-        ### Setup
-        id_counter = state['id_counter']
-        storage = config['configurable']['storage']
-        metrics = state['metrics']
-
+    def critique_node(self, state: AgentState):
+        print('Inside critique node\n\n')
         ### Invocacion
         ## Creating prompts
         name = f"critique_{state['num_revisions']}"
@@ -653,13 +624,14 @@ retrieved from the organization's webpage using RAG, when completing your task:
         print('post-invocation')
 
         ### Guardar los resultados
-        id_counter = storage.save_data(critique, TABLE_NAME, id_counter, name)
+        id_counter = state['id_counter']
+        id_counter = storage.save_data(critique, id_counter, name)
 
         ### Analizar los metricos
-        extract = metrics.extract_tokens_used(critique, name)
-        metrics = metrics.aggregate(extract)
+        extract = self.metrics.extract_tokens_used(critique, name)
+        self.metrics = self.metrics.aggregate(extract)
         print(f'{name} metrics')
-        print(metrics.history)
+        print(self.metrics.history)
         print('\n' + '=' * 50 + '\n')
 
         ### Update AgentState
@@ -667,17 +639,13 @@ retrieved from the organization's webpage using RAG, when completing your task:
             'messages': [critique],
             'critique': [critique], 
             'id_counter': id_counter,
-            'metrics': metrics.history,
+            'metrics': self.metrics.history,
         }
 
 
     ### Investigation node
-    def investigation_node(self, state: AgentState, config: RunnableConfig):
-        ### Setup
-        id_counter = state['id_counter']
-        storage = config['configurable']['storage']
-        metrics = state['metrics']
-
+    def investigation_node(self, state: AgentState):
+        print('Inside investigation node\n\n')
         ### Primera invocacion
         ## Creating prompts
         base_name = f"investigation_{state['num_revisions']}"
@@ -702,13 +670,14 @@ to the organizational's website RAG agent.\
         print('post-invocations-ONE')
 
         ### Guardar resultados
-        id_counter = storage.save_data(new_rag_prompt, TABLE_NAME, id_counter, name)
+        id_counter = state['id_counter']
+        id_counter = storage.save_data(new_rag_prompt, id_counter, name)
 
         ### Analizar los metricos
-        extract = metrics.extract_tokens_used(new_rag_prompt, name)
-        metrics = metrics.aggregate(extract)
+        extract = self.metrics.extract_tokens_used(new_rag_prompt, name)
+        self.metrics = self.metrics.aggregate(extract)
         print(f'{name} metrics')
-        print(metrics.history)
+        print(self.metrics.history)
         print('\n' + '=' * 50 + '\n')
 
 
@@ -717,25 +686,19 @@ to the organizational's website RAG agent.\
         name = base_name + '_new_rag_context'
         user_query = new_rag_prompt.content
         print('pre-invoke-TWO')
-        rag_result, id_counter, rag_metrics = self.rag.invoke(
-            user_query, 
-            storage,
-            metrics,
-            id_counter, 
-            name
-        )
+        rag_result, id_counter, rag_metrics = self.rag.invoke(user_query, id_counter, name)
         print('post-invoke-TWO')
         print(f"{name} db index at index: {id_counter}")
         print(rag_result)
         print('\n' + '=' * 50 + '\n')
 
         ### Guardar los resultados
-        id_counter = storage.save_data(rag_result, TABLE_NAME, id_counter, name)
+        id_counter = storage.save_data(rag_result, id_counter, name)
 
         ### Analizar los metricos
-        metrics.history = metrics.history | rag_metrics.history
+        self.metrics.history = self.metrics.history | rag_metrics.history
         print(f'{name} metrics')
-        print(metrics.history)
+        print(self.metrics.history)
         print('\n' + '=' * 50 + '\n')
 
         ### Updat AgentState
@@ -743,7 +706,7 @@ to the organizational's website RAG agent.\
             'messages': [new_rag_prompt, AIMessage(content=f'{name}')],
             'rag_context': [rag_result],
             'id_counter': id_counter,
-            'metrics': metrics.history,
+            'metrics': self.metrics.history,
         }
 
 

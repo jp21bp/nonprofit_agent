@@ -536,6 +536,7 @@ def grants_formatter(state: AgentState, config: dict):
     ## Setting up the grants starting state
     grants_start_state = {
         'messages': [user_query],
+        'metrics': state['metrics'],
         'theme': result['parsed'].theme,
         'doner_requirements': 'final proposal needs to be one page long',
         'num_revisions': 0,
