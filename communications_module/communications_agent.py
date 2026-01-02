@@ -15,6 +15,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import AnyMessage, \
     SystemMessage, HumanMessage
+from langchain.agents import create_agent
 ### Model libraries
 from langchain_google_genai import ChatGoogleGenerativeAI 
 from langchain_cohere import CohereEmbeddings
@@ -149,11 +150,11 @@ profile = {
 ### Setup prompt instructions
 instructions ={
     "router_rules": {
-        "communications": "Marketing newsletters, spam emails, mass company announcements",
+        "email": "Marketing newsletters, spam emails, mass company announcements",
         "calendar": "Team member out sick, build system notifications, project status updates",
         "memory": "Direct questions from team members, meeting requests, critical bug reports",
     },
-    "communications_agent": "Use these tools when sending or receiving emails",
+    "email_agent": "Use these tools when sending or receiving emails",
     "calendar_agent":"Use these tools when working with the calendar, directly or indirectly",
     "memory_agent": "Use these tools when updating important information retrieved from the other agents"
 }
@@ -162,7 +163,7 @@ instructions ={
 ### Storing instructions into long-term memory
 namespace = ("communications_agent", "instructions")
 for key, value in instructions.items():
-    print(f'KEY: {key}')
+    # print(f'KEY: {key}')
     if isinstance(value, dict): continue
         # Skipping router_rules, will do it manually
     store_items(store, namespace, key, {'instruction': f'{value}'})
@@ -675,12 +676,24 @@ class Router(BaseModel):
     )
 
 
+### Create model with pydantic output
+llm_router = base_llm.with_structured_output(Router, include_raw=True)
 
 
 
 
+#### Email agent
+### System prompt
+def email_sys_prompt():
+    ## Setup 
+    namespace = ("communications_agent", "instructions")
 
+    ## Retrieve the instructions
+    result = store.get(namespace, "email_agent")
+    instruction = result.value['instruction']
+    return instruction
 
+print(email_sys_prompt())
 
 
 
@@ -730,6 +743,11 @@ Command[
     store = config['configurable']['store']
     goto = "__end__"
     update = {}
+
+    ### Few shot examples, if used
+        # N/A
+
+    ### Prompts
 
     ### Invoke agent
 
@@ -860,7 +878,7 @@ communication_agent = communication_agent.compile()
 
 
 ##### Visualize communications MAS
-print(communication_agent.get_graph().draw_ascii())
+# print(communication_agent.get_graph().draw_ascii())
 
 
 
