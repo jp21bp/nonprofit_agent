@@ -190,7 +190,7 @@ prompt_instructions = {
     "router_rules":{
         "grants": "Creating grant proposals, revising old proposals, critiquing propsals",
         "events": "Creating new events, status updates of events, modifying events",
-        "emails": "Sending emails, reading emails, following up on email threads"
+        "communications": "Sending emails, reading emails, following up on email threads"
     }
 }
 #### Putting instructions into memory
@@ -243,12 +243,12 @@ class Router(BaseModel):
     reasoning: str = Field(
         description="Step-by-step reasoning behind the classification."
     )
-    classification: Literal["grants", "events", "emails",] = Field(
+    classification: Literal["grants", "events", "communications",] = Field(
         description="""\
 The classfication of an incoming query: \
 'grants' for queries related to grant proposals, \
 'events' for queries related to the management of events, \
-'emails' for queries related to email tasks.\
+'communications' for queries related to email or scheduling tasks.\
 """
     )
 
@@ -395,7 +395,7 @@ class AgentState(TypedDict):
     metrics: Annotated[dict[str, dict[str, int]], operator.or_]
     grants_start_state: dict
     # events_start_state: dict
-    # emails_start_state: dict
+    # communications_start_state: dict
 
 #### Creating router node
 def main_router_node(state: AgentState, config: RunnableConfig) -> \
@@ -403,7 +403,7 @@ Command[
     Literal[
         "grants_formatter", 
         "events_formatter", 
-        "emails_formatter", 
+        "communications_formatter", 
         "__end__"
     ]
 ]:
@@ -416,14 +416,14 @@ Command[
     instruct_namespace = (LG_USER_ID, "instructions")
     
     ## Retrieving instructions
-    instructions = ["grants_rule", "events_rule", "emails_rule"]
+    instructions = ["grants_rule", "events_rule", "communications_rule"]
     instructs = retrieve_items(store, instruct_namespace, instructions)
 
     ## Creating system prompt
     system_prompt = router_system_prompt.format(
         grants_route=instructs['grants_rule']['instruction'],
         events_route=instructs['events_rule']['instruction'],
-        emails_route=instructs['emails_rule']['instruction'],
+        communications_route=instructs['communications_rule']['instruction'],
         examples=None
     )
 
@@ -470,9 +470,9 @@ Command[
     elif result.classification == 'events_formatter':
         print('Classificaiton: Events')
         goto = 'events_formatter'
-    elif result.classication == 'emails_formatter':
-        print('Classification: Emails')
-        goto = 'emails_formatter'
+    elif result.classication == 'communications_formatter':
+        print('Classification: Communications')
+        goto = 'communications_formatter'
     else:
         raise ValueError(f"Invalid classificaiton: {result.classification}")
     
@@ -493,7 +493,7 @@ Command[
 
 #### Formatter LLMs nodes
 ### Grants
-def grants_formatter(state: AgentState, config: dict):
+def grants_formatter(state: AgentState, config: RunnableConfig):
     ## Setting up objects for grants formatter
     metrics = Metrics()
     update = {}
@@ -556,10 +556,10 @@ def grants_formatter(state: AgentState, config: dict):
 
 
 ### Events
-def events_formatter(state: AgentState, config: dict):
+def events_formatter(state: AgentState, config: RunnableConfig):
     return
-### Emails
-def emails_formatter(state: AgentState, config: dict):
+### Communications
+def communications_formatter(state: AgentState, config: RunnableConfig):
     return
 
 
@@ -576,7 +576,7 @@ def emails_formatter(state: AgentState, config: dict):
 
 #### Sub-agents
 ### Grants subagent 
-def grants_agent_node(state: AgentState, config: dict):
+def grants_agent_node(state: AgentState, config: RunnableConfig):
     ### Setting up objects for the grants subagent
     metrics = Metrics()
     upgate = {}
@@ -598,13 +598,13 @@ def grants_agent_node(state: AgentState, config: dict):
     return update
 
 ### Events subagent
-def events_agent_node(state: AgentState, config: dict):
+def events_agent_node(state: AgentState, config: RunnableConfig):
     # TODO: create an events agent
     return
 
-### Emails subagent
-def emails_agent_node(state: AgentState, config: dict):
-    # TODO:  integrate email agent
+### Communications subagent
+def communications_agent_node(state: AgentState, config: RunnableConfig):
+    # TODO:  integrate communications agent
     return
 
 
@@ -638,15 +638,15 @@ main_agent = StateGraph(AgentState)
 main_agent = main_agent.add_node("main_router", main_router_node)
 main_agent = main_agent.add_node(grants_formatter)
 main_agent = main_agent.add_node(events_formatter)
-main_agent = main_agent.add_node(emails_formatter)
+main_agent = main_agent.add_node(communications_formatter)
 main_agent = main_agent.add_node("grants_subagent", grants_agent_node)
 main_agent = main_agent.add_node("events_subagent", events_agent_node)
-main_agent = main_agent.add_node("emails_subagent", emails_agent_node)
+main_agent = main_agent.add_node("communications_subagent", communications_agent_node)
 #### Adding edges
 main_agent = main_agent.add_edge(START, "main_router")
 main_agent = main_agent.add_edge("grants_formatter", "grants_subagent")
 main_agent = main_agent.add_edge("events_formatter", "events_subagent")
-main_agent = main_agent.add_edge("emails_formatter", "emails_subagent")
+main_agent = main_agent.add_edge("communications_formatter", "communications_subagent")
 #### Compiling agent
 main_agent = main_agent.compile(
     checkpointer=checkpointer,

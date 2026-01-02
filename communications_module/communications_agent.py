@@ -1,5 +1,5 @@
-###### Email Assistant agent
-    # This file contains the email agent
+###### Communications Assistant agent
+    # This file contains the communications agent
     # Will be imported into the main graph
 
 ##### General setup
@@ -8,12 +8,17 @@
 import os, operator, base64, sqlite3
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, Literal, List
+from typing_extensions import TypedDict, Literal, Annotated
 ### Langchain libraries
+from langgraph.graph import StateGraph, START, END
 from langchain_core.runnables import RunnableConfig
+from langchain_core.messages import AnyMessage, \
+    SystemMessage, HumanMessage
 ### Model libraries
 from langchain_google_genai import ChatGoogleGenerativeAI 
 from langchain_cohere import CohereEmbeddings
+from langgraph.types import Command
 ### Storage libraries
 from langgraph.store.postgres import PostgresStore
 from psycopg import Connection
@@ -83,7 +88,7 @@ base_llm = ChatGoogleGenerativeAI(
 # )
 
 #### Setting up DB storage utility
-TABLE_NAME = "email_assistant"
+TABLE_NAME = "communications_assistant"
 # storage = Storage(DB_NAME, TABLE_NAME)
 
 
@@ -109,7 +114,7 @@ store.setup()
 profile = {
     "name": "Miguel",
     "full_name" : "Miguel Gomez",
-    "user_profile_background": "Programmer"
+    "user_profile_background": "Mid software engineer"
 }
 
 
@@ -144,18 +149,18 @@ profile = {
 ### Setup prompt instructions
 instructions ={
     "router_rules": {
-        "ignore": "Marketing newsletters, spam emails, mass company announcements",
-        "notify": "Team member out sick, build system notifications, project status updates",
-        "respond": "Direct questions from team members, meeting requests, critical bug reports",
+        "communications": "Marketing newsletters, spam emails, mass company announcements",
+        "calendar": "Team member out sick, build system notifications, project status updates",
+        "memory": "Direct questions from team members, meeting requests, critical bug reports",
     },
-    "emailing_agent": "Use these tools when sending or receiving emails",
+    "communications_agent": "Use these tools when sending or receiving emails",
     "calendar_agent":"Use these tools when working with the calendar, directly or indirectly",
     "memory_agent": "Use these tools when updating important information retrieved from the other agents"
 }
 
 
 ### Storing instructions into long-term memory
-namespace = ("email_agent", "instructions")
+namespace = ("communications_agent", "instructions")
 for key, value in instructions.items():
     print(f'KEY: {key}')
     if isinstance(value, dict): continue
@@ -200,7 +205,7 @@ for key, value in instructions["router_rules"].items():
 ### Manage memory tool
 manage_memory_tool = create_manage_memory_tool(
     namespace=(
-        "email_agent",
+        "communication_agent",
         "semantic_memory"
     )
 )
@@ -208,7 +213,7 @@ manage_memory_tool = create_manage_memory_tool(
 ### Search memory tool
 search_memory_tool = create_search_memory_tool(
     namespace=(
-        "email_agent",
+        "communication_agent",
         "semantic_memory"
     )
 )
@@ -241,6 +246,34 @@ def gather_credentials():
         with open("token.json", "w") as token:
             token.write(creds.to_json())
     return creds
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #### Emailing tools
@@ -329,6 +362,34 @@ def write_email(
     except HttpError as error:
         print(f"An error occurred: {error}")
     return f"Email sent to {to} with subject '{subject}'"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #### Calendar tools
@@ -581,6 +642,225 @@ def check_availability(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### Creating LLMs and agents
+#### Router LLM
+### Pydantic model
+class Router(BaseModel):
+    """Analyze the incoming query and route it according to its content"""
+
+    reasoning: str = Field(
+        description="Step-by-step reasoning behind the classification."
+    )
+        # Reasoning behind why LLM made the decision it chose
+    classification: Literal["ignore", "respond", "notify"] = Field(
+        description=""""\
+        The classification of an incoming query:\
+        'emailing_agent': queries related to the email APIs,\
+        'calendar_agent': queries related to using the calendar API,\
+        'memory_agent': queries related to saving or retriving memory items.
+        """
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### Creating the communications MAS nodes
+#### Creating the agent's state
+class AgentState(TypedDict):
+    messages: Annotated[List[AnyMessage], operator.add]
+    input_query: str    
+    metrics: Annotated[dict[str, dict[str,int]], operator.or_]
+
+#### Creating node functionalities
+### Router node
+def router_node(state: AgentState, config: RunnableConfig) -> \
+Command[
+    Literal[
+        'email_agent', 
+        'calendar_agent',
+        'memory_agent', 
+        '__end__'
+    ]
+]: 
+    ### Setup
+    metrics = state['metrics']
+    store = config['configurable']['store']
+    goto = "__end__"
+    update = {}
+
+    ### Invoke agent
+
+    ### Analyze metric usage
+
+    ### Setup next graph traversal
+
+    return Command(goto=goto, update=update)
+
+
+
+### Email agent node
+def email_node(state: AgentState, config: RunnableConfig)-> \
+Command[
+    Literal[
+        "__end__"
+    ]
+]:
+    ### Setup
+    metrics = state['metrics']
+    store = config['configurable']['store']
+    goto = "__end__"
+    update = {}
+
+    ### Invoke agent
+
+    ### Analyze metric usage
+
+    ### Setup next graph traversal
+
+    return Command(goto=goto, update=update)
+
+
+### Calendar agent node
+def calendar_node(state: AgentState, config: RunnableConfig)-> \
+Command[
+    Literal[
+        "__end__"
+    ]
+]:
+    ### Setup
+    metrics = state['metrics']
+    store = config['configurable']['store']
+    goto = "__end__"
+    update = {}
+
+    ### Invoke agent
+
+    ### Analyze metric usage
+
+    ### Setup next graph traversal
+
+    return Command(goto=goto, update=update)
+
+
+### Memory agent node
+def memory_node(state: AgentState, config: RunnableConfig)-> \
+Command[
+    Literal[
+        "__end__"
+    ]
+]:
+    ### Setup
+    metrics = state['metrics']
+    store = config['configurable']['store']
+    goto = "__end__"
+    update = {}
+
+    ### Invoke agent
+
+    ### Analyze metric usage
+
+    ### Setup next graph traversal
+
+    return Command(goto=goto, update=update)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### Assembling the communications MAS graph
+communication_agent = StateGraph(AgentState)
+communication_agent = communication_agent.add_node("router", router_node)
+communication_agent = communication_agent.add_node("email_agent", email_node)
+communication_agent = communication_agent.add_node("calendar_agent", calendar_node)
+communication_agent = communication_agent.add_node("memory_agent", memory_node)
+communication_agent = communication_agent.add_edge(START, "router")
+communication_agent = communication_agent.compile()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### Visualize communications MAS
+print(communication_agent.get_graph().draw_ascii())
 
 
 
